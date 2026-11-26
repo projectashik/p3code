@@ -1054,6 +1054,36 @@ export const DesktopPreviewSetAudioMutedInputSchema = Schema.Struct({
   audioMuted: Schema.Boolean,
 });
 
+export const DesktopPreviewOpenDevToolsInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  detach: Schema.optional(Schema.Boolean),
+});
+
+export const DesktopPreviewDevToolsDockBoundsSchema = Schema.Struct({
+  x: Schema.Finite,
+  y: Schema.Finite,
+  width: Schema.Finite,
+  height: Schema.Finite,
+});
+export type DesktopPreviewDevToolsDockBounds = typeof DesktopPreviewDevToolsDockBoundsSchema.Type;
+
+export const DesktopPreviewSetDevToolsDockBoundsInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  bounds: Schema.NullOr(DesktopPreviewDevToolsDockBoundsSchema),
+  snapshot: Schema.optional(Schema.Boolean),
+});
+
+export const DesktopBrowserExtensionSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  version: Schema.String,
+});
+export type DesktopBrowserExtension = typeof DesktopBrowserExtensionSchema.Type;
+
+export const DesktopBrowserExtensionInputSchema = Schema.Struct({
+  extensionId: Schema.String.check(Schema.isNonEmpty()),
+});
+
 export const DesktopPreviewSetShownInputSchema = Schema.Struct({
   tabId: DesktopPreviewTabIdSchema,
   shown: Schema.Boolean,
@@ -1358,7 +1388,19 @@ export interface DesktopPreviewBridge {
   setShown: (tabId: string, shown: boolean) => Promise<void>;
   /** Tells the tab's server whether its webview is drawn at full detail for a capture. */
   setCaptureDrawn: (tabId: string, drawn: boolean) => Promise<void>;
-  openDevTools: (tabId: string) => Promise<void>;
+  /** Docks DevTools inside the panel unless `detach` asks for their own window. */
+  openDevTools: (tabId: string, options?: { detach?: boolean }) => Promise<void>;
+  closeDevTools: (tabId: string) => Promise<void>;
+  /** Null hides the docked view; with `snapshot` its last frame comes back as a data URL. */
+  setDevToolsDockBounds: (
+    tabId: string,
+    bounds: DesktopPreviewDevToolsDockBounds | null,
+    snapshot?: boolean,
+  ) => Promise<string | null>;
+  onDevToolsDockChanged: (listener: (tabId: string, docked: boolean) => void) => () => void;
+  /** Chrome extensions installed for the persistent browser profiles. */
+  listExtensions: () => Promise<ReadonlyArray<DesktopBrowserExtension>>;
+  removeExtension: (extensionId: string) => Promise<void>;
   clearCookies: (environmentId: EnvironmentId, profileId?: string) => Promise<void>;
   clearCache: (environmentId: EnvironmentId, profileId?: string) => Promise<void>;
   getPreviewConfig: (

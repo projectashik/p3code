@@ -1,6 +1,7 @@
 import type { DesktopPreviewColorScheme } from "@t3tools/contracts";
 import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { Minus, MoreVertical, Plus as PlusIcon, RotateCcw } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
 import {
@@ -53,6 +54,7 @@ interface Props {
   profileName: string | undefined;
   findShortcutLabel?: string | null;
   move?: { readonly label: string; readonly onMove: () => void };
+  extensionsMenu?: ReactNode;
 }
 
 const MenuTriggerButton = () => {
@@ -88,6 +90,7 @@ export function PreviewMoreMenu({
   profileName,
   findShortcutLabel,
   move,
+  extensionsMenu,
 }: Props) {
   const gt = useGT();
   const m = useMessages();
@@ -111,6 +114,7 @@ export function PreviewMoreMenu({
             <T>Open DevTools</T>
           </MenuItem>
         ) : null}
+        {extensionsMenu}
         {actions.toggleNativePictureInPicture ? (
           <MenuItem onClick={actions.toggleNativePictureInPicture} disabled={disabled}>
             {nativePictureInPicture

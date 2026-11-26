@@ -69,11 +69,14 @@ import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts"
 import {
   MENU_ACTION_CHANNEL,
   PREVIEW_ANNOTATION_VOICE_EVENT_CHANNEL,
+  PREVIEW_DEVTOOLS_DOCK_CHANGED_CHANNEL,
   PREVIEW_PICTURE_IN_PICTURE_FRAME_CHANNEL,
 } from "../ipc/channels.ts";
 import * as DesktopBrowserHost from "./DesktopBrowserHost.ts";
 import * as PreviewPasskeys from "./Passkeys.ts";
 import * as BrowserSession from "./BrowserSession.ts";
+import { DevToolsDock, type DevToolsDockBounds } from "./DevToolsDock.ts";
+import { selectBrowserExtensionTab } from "./BrowserExtensions.ts";
 import {
   ANNOTATION_CAPTURED_CHANNEL,
   ANNOTATION_SEND_ENABLED_CHANNEL,
@@ -616,6 +619,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const tabLifecycleGenerations = new Map<string, number>();
   // A guest can fail its first load before registerWebview installs its tab listeners.
   const guestLoadFailures = new Map<number, PreviewAutomationLoadError>();
+  const devToolsDock = new DevToolsDock();
 
   const attempt = <A>(errorContext: PreviewOperationContext, evaluate: () => A) =>
     Effect.try({
@@ -2273,8 +2277,33 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       }),
     );
 
-  const openDevTools = Effect.fn("PreviewManager.openDevTools")(function* (tabId: string) {
+  const notifyDevToolsDocked = (wc: Electron.WebContents, tabId: string, docked: boolean) => {
+    const host = wc.isDestroyed() ? null : wc.hostWebContents;
+    if (host && !host.isDestroyed())
+      host.send(PREVIEW_DEVTOOLS_DOCK_CHANGED_CHANNEL, tabId, docked);
+  };
+
+  const openDetachedDevTools = (tabId: string, wc: Electron.WebContents) =>
+    attempt({ operation: "openDevTools", tabId, webContentsId: wc.id }, () => {
+      wc.once("devtools-closed", () => {
+        if (!wc.isDestroyed()) runFork(restoreControlSession(tabId, wc));
+      });
+      wc.openDevTools({ mode: "detach" });
+    });
+
+  const openDevTools = Effect.fn("PreviewManager.openDevTools")(function* (
+    tabId: string,
+    options?: { readonly detach?: boolean },
+  ) {
     const wc = yield* requireWebContents(tabId);
+    const detach = options?.detach === true;
+    if (devToolsDock.isDocked(wc.id)) {
+      if (!detach) return devToolsDock.focus(wc.id);
+      // The control session stays released: DevTools move to their own window.
+      yield* Effect.promise(() => devToolsDock.close(wc.id, { notify: false }));
+      notifyDevToolsDocked(wc, tabId, false);
+      return yield* openDetachedDevTools(tabId, wc);
+    }
     if (wc.isDevToolsOpened()) {
       yield* attempt({ operation: "openDevTools.focus", tabId, webContentsId: wc.id }, () =>
         wc.devToolsWebContents?.focus(),
@@ -2282,12 +2311,42 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       return;
     }
     yield* detachControlSession(wc.id);
-    yield* attempt({ operation: "openDevTools", tabId, webContentsId: wc.id }, () => {
-      wc.once("devtools-closed", () => {
-        if (!wc.isDestroyed()) runFork(restoreControlSession(tabId, wc));
-      });
-      wc.openDevTools({ mode: "detach" });
-    });
+    if (!detach) {
+      const docked = yield* attemptPromise(
+        { operation: "openDevTools.dock", tabId, webContentsId: wc.id },
+        () =>
+          devToolsDock.open(wc, () => {
+            notifyDevToolsDocked(wc, tabId, false);
+            if (!wc.isDestroyed()) runFork(restoreControlSession(tabId, wc));
+          }),
+      );
+      if (docked) return notifyDevToolsDocked(wc, tabId, true);
+    }
+    yield* openDetachedDevTools(tabId, wc);
+  });
+
+  const closeDevTools = Effect.fn("PreviewManager.closeDevTools")(function* (tabId: string) {
+    const wc = yield* requireWebContents(tabId);
+    if (devToolsDock.isDocked(wc.id)) {
+      yield* Effect.promise(() => devToolsDock.close(wc.id));
+      return;
+    }
+    if (wc.isDevToolsOpened()) {
+      yield* attempt({ operation: "closeDevTools", tabId, webContentsId: wc.id }, () =>
+        wc.closeDevTools(),
+      );
+    }
+  });
+
+  const setDevToolsDockBounds = Effect.fn("PreviewManager.setDevToolsDockBounds")(function* (
+    tabId: string,
+    bounds: DevToolsDockBounds | null,
+    snapshot: boolean,
+  ) {
+    const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
+    if (tab?.webContentsId == null) return null;
+    const guestId = tab.webContentsId;
+    return yield* Effect.promise(() => devToolsDock.setBounds(guestId, bounds, snapshot));
   });
 
   const setAnnotationTheme = Effect.fn("PreviewManager.setAnnotationTheme")(function* (
@@ -2659,8 +2718,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   });
 
   const setShown = Effect.fn("PreviewManager.setShown")(function* (tabId: string, shown: boolean) {
-    const serverTab = (yield* SynchronizedRef.get(tabsRef)).get(tabId)?.serverTab;
-    if (serverTab) browserHost.setShown(serverTab, shown);
+    const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
+    if (tab?.serverTab) browserHost.setShown(tab.serverTab, shown);
+    const wc = shown && tab?.webContentsId != null ? webContents.fromId(tab.webContentsId) : null;
+    if (wc && !wc.isDestroyed()) selectBrowserExtensionTab(wc);
   });
 
   const setCaptureDrawn = Effect.fn("PreviewManager.setCaptureDrawn")(function* (
@@ -3761,6 +3822,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     navigate,
     openPictureInPicture,
     openDevTools,
+    closeDevTools,
+    setDevToolsDockBounds,
     pickElement,
     updateAnnotationVoice,
     prepareWebview,
@@ -3995,7 +4058,16 @@ export class PreviewManager extends Context.Service<
     ) => Effect.Effect<void, PreviewManagerError>;
     readonly setShown: (tabId: string, shown: boolean) => Effect.Effect<void>;
     readonly setCaptureDrawn: (tabId: string, drawn: boolean) => Effect.Effect<void>;
-    readonly openDevTools: (tabId: string) => Effect.Effect<void, PreviewManagerError>;
+    readonly openDevTools: (
+      tabId: string,
+      options?: { readonly detach?: boolean },
+    ) => Effect.Effect<void, PreviewManagerError>;
+    readonly closeDevTools: (tabId: string) => Effect.Effect<void, PreviewManagerError>;
+    readonly setDevToolsDockBounds: (
+      tabId: string,
+      bounds: DevToolsDockBounds | null,
+      snapshot: boolean,
+    ) => Effect.Effect<string | null>;
     readonly clearCookies: (
       partitions?: ReadonlyArray<string>,
     ) => Effect.Effect<void, PreviewManagerError>;
@@ -4159,6 +4231,8 @@ export const make = Effect.gen(function* PreviewManagerMake() {
     setShown: operations.setShown,
     setCaptureDrawn: operations.setCaptureDrawn,
     openDevTools: operations.openDevTools,
+    closeDevTools: operations.closeDevTools,
+    setDevToolsDockBounds: operations.setDevToolsDockBounds,
     clearCookies: Effect.fn("PreviewManager.clearCookies")(function* (partitions) {
       yield* browserSession
         .clearCookies(partitions)

@@ -149,7 +149,10 @@ export default defineConfig({
       entry: ["src/preload.ts"],
       deps: {
         // Sandboxed preloads cannot resolve imports inside ASAR; bundle Clerk's bridge.
-        alwaysBundle: (id) => id === "@clerk/electron" || id.startsWith("@clerk/electron/"),
+        alwaysBundle: (id) =>
+          id === "@clerk/electron" ||
+          id.startsWith("@clerk/electron/") ||
+          id === "electron-chrome-extensions/browser-action",
       },
     },
     {
@@ -171,6 +174,14 @@ export default defineConfig({
       sourcemap: true,
       outExtensions: () => ({ js: ".cjs" }),
       entry: ["src/preview-pip-preload.ts"],
+    },
+    {
+      format: "cjs",
+      outDir: "dist-electron",
+      dts: false,
+      sourcemap: true,
+      outExtensions: () => ({ js: ".cjs" }),
+      entry: ["src/extension-worker-preload.ts"],
     },
     {
       // Sandboxed preloads must be self-contained, without shared runtime chunks.

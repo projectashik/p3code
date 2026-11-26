@@ -42,6 +42,10 @@ import {
   PRIMARY_PASTE_DISABLED_ARGUMENT,
 } from "../preview/GuestProtocol.ts";
 import * as PreviewManager from "../preview/Manager.ts";
+import {
+  allowBrowserExtensionIcons,
+  trackBrowserExtensionTab,
+} from "../preview/BrowserExtensions.ts";
 import * as PreviewPasskeys from "../preview/Passkeys.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
@@ -781,8 +785,10 @@ export const make = Effect.gen(function* () {
       });
     };
     installContextMenu(window, window.webContents);
+    allowBrowserExtensionIcons(window.webContents.session);
     window.webContents.on("did-attach-webview", (_event, contents) => {
       installContextMenu(window, contents, true);
+      trackBrowserExtensionTab(contents, window);
       void runPromise(previewManager.prepareWebview(contents));
     });
 

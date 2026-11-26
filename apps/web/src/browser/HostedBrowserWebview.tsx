@@ -27,6 +27,7 @@ import {
   resolveHiddenBrowserViewportSize,
 } from "./browserViewportLayout";
 import { BrowserDeviceToolbar } from "./BrowserDeviceToolbar";
+import { setBrowserExtensionGuest } from "./BrowserExtensionActions";
 import { BrowserViewportResizeHandles } from "./BrowserViewportResizeHandles";
 import { acquireDesktopTab, type AcquiredDesktopTab, withDesktopTab } from "./desktopTabLifetime";
 import { resolveHostedBrowserWebviewWrapperStyle } from "./hostedBrowserWebviewStyle";
@@ -175,6 +176,7 @@ export function HostedBrowserWebview(props: {
           if (Number.isInteger(webContentsId) && webContentsId > 0) {
             await bridge.registerWebview(runtimeTabId, webContentsId);
             registeredWebContentsId = webContentsId;
+            setBrowserExtensionGuest(runtimeTabId, { webContentsId, partition: config.partition });
             withDesktopTab(runtimeTabId, () => bridge.setShown(runtimeTabId, reportedShown()));
           }
         } catch {}
@@ -220,6 +222,7 @@ export function HostedBrowserWebview(props: {
       disposed = true;
       if (recoveryTimeout !== null) clearTimeout(recoveryTimeout);
       unsubscribeState();
+      setBrowserExtensionGuest(runtimeTabId, null);
       webview.removeEventListener("did-attach", register);
       webview.removeEventListener("dom-ready", register);
       webview.removeEventListener("render-process-gone", recoverGuest);

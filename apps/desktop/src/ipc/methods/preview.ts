@@ -13,6 +13,10 @@ import {
   DesktopPreviewScreenshotArtifactSchema,
   DesktopPreviewSetAudioMutedInputSchema,
   DesktopPreviewSetShownInputSchema,
+  DesktopPreviewOpenDevToolsInputSchema,
+  DesktopBrowserExtensionSchema,
+  DesktopBrowserExtensionInputSchema,
+  DesktopPreviewSetDevToolsDockBoundsInputSchema,
   DesktopPreviewSetCaptureDrawnInputSchema,
   DesktopPreviewSetColorSchemeInputSchema,
   DesktopPreviewSetZoomFactorInputSchema,
@@ -44,6 +48,7 @@ import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as BrowserImport from "../../preview/BrowserImport/BrowserImport.ts";
 import * as LoopbackTunnel from "../../preview/LoopbackTunnel.ts";
 import * as PreviewManager from "../../preview/Manager.ts";
+import { listBrowserExtensions, removeBrowserExtension } from "../../preview/BrowserExtensions.ts";
 import { normalizeCaptureFailure } from "../../preview/captureErrors.ts";
 import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts";
 import { PREVIEW_WEBVIEW_PREFERENCES } from "../../preview/WebviewPreferences.ts";
@@ -254,11 +259,49 @@ const setCaptureDrawn = DesktopIpc.makeIpcMethod({
     yield* manager.setCaptureDrawn(tabId, drawn);
   }),
 });
-const openDevTools = tabMethod(
-  IpcChannels.PREVIEW_OPEN_DEVTOOLS_CHANNEL,
-  "desktop.ipc.preview.openDevTools",
-  (manager, tabId) => manager.openDevTools(tabId),
+const openDevTools = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_OPEN_DEVTOOLS_CHANNEL,
+  payload: DesktopPreviewOpenDevToolsInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.openDevTools")(function* ({ tabId, detach }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    yield* manager.openDevTools(tabId, detach === undefined ? undefined : { detach });
+  }),
+});
+const listExtensions = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_LIST_EXTENSIONS_CHANNEL,
+  payload: Schema.Void,
+  result: Schema.Array(DesktopBrowserExtensionSchema),
+  handler: Effect.fn("desktop.ipc.preview.listExtensions")(function* () {
+    return yield* Effect.sync(listBrowserExtensions);
+  }),
+});
+const removeExtension = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_REMOVE_EXTENSION_CHANNEL,
+  payload: DesktopBrowserExtensionInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.removeExtension")(function* ({ extensionId }) {
+    yield* Effect.promise(() => removeBrowserExtension(extensionId));
+  }),
+});
+const closeDevTools = tabMethod(
+  IpcChannels.PREVIEW_CLOSE_DEVTOOLS_CHANNEL,
+  "desktop.ipc.preview.closeDevTools",
+  (manager, tabId) => manager.closeDevTools(tabId),
 );
+const setDevToolsDockBounds = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_SET_DEVTOOLS_DOCK_BOUNDS_CHANNEL,
+  payload: DesktopPreviewSetDevToolsDockBoundsInputSchema,
+  result: Schema.NullOr(Schema.String),
+  handler: Effect.fn("desktop.ipc.preview.setDevToolsDockBounds")(function* ({
+    tabId,
+    bounds,
+    snapshot,
+  }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    return yield* manager.setDevToolsDockBounds(tabId, bounds, snapshot === true);
+  }),
+});
 const cancelPickElement = tabMethod(
   IpcChannels.PREVIEW_CANCEL_PICK_ELEMENT_CHANNEL,
   "desktop.ipc.preview.cancelPickElement",
@@ -568,6 +611,10 @@ export const methods = [
   setShown,
   setCaptureDrawn,
   openDevTools,
+  closeDevTools,
+  setDevToolsDockBounds,
+  listExtensions,
+  removeExtension,
   clearCookies,
   clearCache,
   getPreviewConfig,

@@ -91,6 +91,8 @@ import type { MessageResolver } from "~/i18n/messages";
 import { revealInFileExplorerLabel } from "./fileExplorerLabel";
 import { Badge } from "~/components/ui/badge";
 import { BrowserSurfaceSlot } from "~/browser/BrowserSurfaceSlot";
+import { BrowserDevToolsDockLayout } from "~/browser/BrowserDevToolsDock";
+import { BrowserExtensionActions, BrowserExtensionsMenu } from "~/browser/BrowserExtensionActions";
 import {
   alternatePreviewRuntime,
   useDesktopLoadsLoopback,
@@ -1081,33 +1083,44 @@ export function PreviewView({
           ) : null
         }
         trailingActions={
-          moreMenuActions ? (
-            <PreviewMoreMenu
-              enabled={
-                runtimeTabId !== null &&
-                (serverOwnsRendering || (desktopOverlay?.hasWebContents ?? false))
-              }
-              actions={moreMenuActions}
-              {...(moveTarget
-                ? { move: { label: moveLabel, onMove: () => void handleMoveTab() } }
-                : {})}
-              profileName={activeProfileName}
-              findShortcutLabel={shortcutLabelForCommand(keybindings, "preview.find", {
-                context: { previewFocus: true },
-              })}
-              zoomFactor={
-                serverOwnsRendering ? serverZoomFactor : (desktopOverlay?.zoomFactor ?? 1)
-              }
-              colorScheme={
-                serverOwnsRendering
-                  ? (snapshot?.colorScheme ?? "system")
-                  : (desktopOverlay?.colorScheme ?? "system")
-              }
-              deviceToolbarVisible={viewport._tag !== "fill"}
-              onToggleDeviceToolbar={handleToggleDeviceToolbar}
-              nativePictureInPicture={desktopOverlay?.pictureInPicture ?? false}
-            />
-          ) : null
+          <>
+            {runtimeTabId && !isServerTab ? <BrowserExtensionActions tabId={runtimeTabId} /> : null}
+            {moreMenuActions ? (
+              <PreviewMoreMenu
+                enabled={
+                  runtimeTabId !== null &&
+                  (serverOwnsRendering || (desktopOverlay?.hasWebContents ?? false))
+                }
+                actions={moreMenuActions}
+                {...(moveTarget
+                  ? { move: { label: moveLabel, onMove: () => void handleMoveTab() } }
+                  : {})}
+                profileName={activeProfileName}
+                findShortcutLabel={shortcutLabelForCommand(keybindings, "preview.find", {
+                  context: { previewFocus: true },
+                })}
+                zoomFactor={
+                  serverOwnsRendering ? serverZoomFactor : (desktopOverlay?.zoomFactor ?? 1)
+                }
+                colorScheme={
+                  serverOwnsRendering
+                    ? (snapshot?.colorScheme ?? "system")
+                    : (desktopOverlay?.colorScheme ?? "system")
+                }
+                deviceToolbarVisible={viewport._tag !== "fill"}
+                onToggleDeviceToolbar={handleToggleDeviceToolbar}
+                nativePictureInPicture={desktopOverlay?.pictureInPicture ?? false}
+                extensionsMenu={
+                  runtimeTabId && !isServerTab ? (
+                    <BrowserExtensionsMenu
+                      tabId={runtimeTabId}
+                      onOpenUrl={(next) => void handleSubmitUrl(next)}
+                    />
+                  ) : null
+                }
+              />
+            ) : null}
+          </>
         }
       />
 
@@ -1163,14 +1176,19 @@ export function PreviewView({
           </>
         ) : runtimeTabId && snapshot && !showEmptyState ? (
           previewBridge ? (
-            <BrowserSurfaceSlot
+            <BrowserDevToolsDockLayout
               key={runtimeTabId}
               tabId={runtimeTabId}
               visible={visible && !isUnreachable}
-              className="absolute inset-0 h-full w-full"
             >
-              {pageOverlays}
-            </BrowserSurfaceSlot>
+              <BrowserSurfaceSlot
+                tabId={runtimeTabId}
+                visible={visible && !isUnreachable}
+                className="absolute inset-0 h-full w-full"
+              >
+                {pageOverlays}
+              </BrowserSurfaceSlot>
+            </BrowserDevToolsDockLayout>
           ) : (
             <div className="flex h-full items-center justify-center p-8 text-center">
               <p className="max-w-sm text-sm text-muted-foreground">

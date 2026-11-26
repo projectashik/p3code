@@ -63,6 +63,7 @@ import {
   deviceHubReadiness,
 } from "~/components/device/DeviceSetup";
 import { isElectron } from "../../env";
+import { BrowserExtensionsSettings } from "./BrowserExtensionsSettings";
 
 import { Badge } from "../ui/badge";
 import {
@@ -1725,6 +1726,7 @@ export function BrowserSettingsPanel() {
           </SettingsUnavailableGroup>
         </AdvancedSettings>
       </SettingsSection>
+      <BrowserExtensionsSettings />
       <SettingsSection id="browser-recordings" title={gt("Recordings")}>
         <SettingsUnavailableGroup message={desktopOnlyMessage}>
           <BrowserRecordingFrameRateSetting disabled={desktopOnly} />

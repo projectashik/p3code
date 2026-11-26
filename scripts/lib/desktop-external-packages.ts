@@ -6,6 +6,9 @@ const DESKTOP_RUNTIME_EXTERNAL_PREFIXES = [
   "electron-webauthn",
   "ffi-rs",
   "@yuuang/",
+  // These resolve their preload scripts from node_modules at runtime.
+  "electron-chrome-extensions",
+  "electron-chrome-web-store",
   // Playwright reads its runtime bundle/driver from disk; inlining cannot replace those files.
   "playwright-core",
 ] as const;

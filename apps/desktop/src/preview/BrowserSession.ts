@@ -19,6 +19,7 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import { m } from "../i18n/messages.ts";
+import { enableBrowserExtensions } from "./BrowserExtensions.ts";
 
 const PREVIEW_PARTITION_PREFIX = "persist:t3code-preview-";
 /** Ephemeral partitions omit persist: but retain a product prefix so the webview gate recognizes them. */
@@ -947,6 +948,13 @@ export const make = Effect.gen(function* BrowserSessionMake() {
       }).pipe(
         Effect.flatMap((browserSession) =>
           loadCertificateTrust(browserSession).pipe(
+            Effect.tap(() =>
+              persistent
+                ? Effect.promise(() =>
+                    enableBrowserExtensions(browserSession).catch(() => undefined),
+                  )
+                : Effect.void,
+            ),
             Effect.map((trust) => {
               certificateTrust.set(browserSession, trust);
               const next = new Map(sessions);

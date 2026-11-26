@@ -9,6 +9,7 @@ import type {
   DesktopSnapShotEvent,
 } from "@t3tools/contracts";
 import { exposeClerkBridge } from "@clerk/electron/preload";
+import { injectBrowserAction } from "electron-chrome-extensions/browser-action";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
@@ -32,6 +33,7 @@ function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
 }
 
 exposeClerkBridge({ passkeys: true });
+injectBrowserAction();
 
 // Runs before any app script reads localStorage. See DesktopLegacyLocalStorage.
 try {
@@ -430,8 +432,29 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ipcRenderer.invoke(IpcChannels.PREVIEW_SET_SHOWN_CHANNEL, { tabId, shown }),
     setCaptureDrawn: (tabId, drawn) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_SET_CAPTURE_DRAWN_CHANNEL, { tabId, drawn }),
-    openDevTools: (tabId) =>
-      ipcRenderer.invoke(IpcChannels.PREVIEW_OPEN_DEVTOOLS_CHANNEL, { tabId }),
+    openDevTools: (tabId, options) =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_OPEN_DEVTOOLS_CHANNEL, {
+        tabId,
+        ...(options?.detach === undefined ? {} : { detach: options.detach }),
+      }),
+    closeDevTools: (tabId) =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_CLOSE_DEVTOOLS_CHANNEL, { tabId }),
+    setDevToolsDockBounds: (tabId, bounds, snapshot) =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_SET_DEVTOOLS_DOCK_BOUNDS_CHANNEL, {
+        tabId,
+        bounds,
+        ...(snapshot === undefined ? {} : { snapshot }),
+      }),
+    listExtensions: () => ipcRenderer.invoke(IpcChannels.PREVIEW_LIST_EXTENSIONS_CHANNEL),
+    removeExtension: (extensionId) =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_REMOVE_EXTENSION_CHANNEL, { extensionId }),
+    onDevToolsDockChanged: (listener) => {
+      const onChanged = (_event: Electron.IpcRendererEvent, tabId: unknown, docked: unknown) => {
+        if (typeof tabId === "string" && typeof docked === "boolean") listener(tabId, docked);
+      };
+      ipcRenderer.on(IpcChannels.PREVIEW_DEVTOOLS_DOCK_CHANGED_CHANNEL, onChanged);
+      return () => ipcRenderer.off(IpcChannels.PREVIEW_DEVTOOLS_DOCK_CHANGED_CHANNEL, onChanged);
+    },
     listBrowserImportSources: () => ipcRenderer.invoke(IpcChannels.PREVIEW_IMPORT_SOURCES_CHANNEL),
     importBrowserCookies: (input) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_IMPORT_COOKIES_CHANNEL, input),
